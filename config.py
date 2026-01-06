@@ -273,6 +273,18 @@ WORKFLOW_MODES = {
         "icon": "🎨",
         "stages": ["story_select", "style", "generate"]
     },
+    "plaid_mag_gen": {
+        "name": "PlaidMagGen",
+        "description": "Comic/magazine style panel stories",
+        "icon": "📰",
+        "stages": ["concept", "style", "generate"]
+    },
+    "plaid_play": {
+        "name": "PlaidPlay",
+        "description": "Interactive choose-your-own-adventure",
+        "icon": "🎮",
+        "stages": ["setup", "play"]
+    },
     "plaid_chat": {
         "name": "PlaidChat",
         "description": "Free-form chat with your Quip",

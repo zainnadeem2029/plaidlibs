@@ -834,6 +834,633 @@ def render_chat_mode():
 
 
 # =============================================================================
+# CREATE DIRECT MODE
+# =============================================================================
+def render_create_direct():
+    """Render the Create Direct mode - free-form story creation with AI guidance."""
+    quip = QUIP_PERSONAS[st.session_state.current_quip]
+    
+    # Initialize Create Direct specific state
+    if "create_direct_stage" not in st.session_state:
+        st.session_state.create_direct_stage = "topic"
+    if "create_direct_topic" not in st.session_state:
+        st.session_state.create_direct_topic = ""
+    if "create_direct_genre" not in st.session_state:
+        st.session_state.create_direct_genre = None
+    if "create_direct_length" not in st.session_state:
+        st.session_state.create_direct_length = "medium"
+    
+    st.markdown(f"""
+    <div class="mode-badge">{quip['icon']} {quip['name']} • ✍️ Create Direct</div>
+    """, unsafe_allow_html=True)
+    
+    if st.session_state.create_direct_stage == "topic":
+        st.markdown("""
+        <div class="assistant-message animate-in">
+            <p>✍️ <strong>Create Direct Mode</strong></p>
+            <p>Tell me what you want to write about! Describe your story idea, theme, or concept. I'll help you craft it into something amazing.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        topic = st.text_area(
+            "Your Story Idea",
+            placeholder="Example: A detective who can only solve crimes by cooking the perfect meal...",
+            height=120,
+            key="create_direct_topic_input"
+        )
+        
+        # Genre selection
+        st.markdown("**Choose a Genre (optional):**")
+        cols = st.columns(5)
+        genre_options = ["Comedy", "Drama", "Fantasy", "Mystery", "Romance", "Sci-Fi", "Horror", "Adventure", "Any"]
+        for i, genre in enumerate(genre_options[:5]):
+            with cols[i]:
+                if st.button(genre, key=f"cd_genre_{genre}", use_container_width=True):
+                    st.session_state.create_direct_genre = genre
+        cols2 = st.columns(5)
+        for i, genre in enumerate(genre_options[5:]):
+            with cols2[i]:
+                if st.button(genre, key=f"cd_genre_{genre}", use_container_width=True):
+                    st.session_state.create_direct_genre = genre
+        
+        if st.session_state.create_direct_genre:
+            st.success(f"**Selected Genre:** {st.session_state.create_direct_genre}")
+        
+        # Length selection
+        st.markdown("**Story Length:**")
+        length = st.select_slider(
+            "Length",
+            options=["Short (100 words)", "Medium (300 words)", "Long (500+ words)"],
+            value="Medium (300 words)",
+            label_visibility="collapsed"
+        )
+        st.session_state.create_direct_length = length
+        
+        if st.button("✨ Generate Story", use_container_width=True):
+            if topic.strip():
+                st.session_state.create_direct_topic = topic
+                st.session_state.create_direct_stage = "generating"
+                st.rerun()
+            else:
+                st.warning("Please enter a story idea!")
+    
+    elif st.session_state.create_direct_stage == "generating":
+        with st.spinner("🪄 Crafting your story..."):
+            try:
+                assistant = get_assistant()
+                
+                genre_text = f" in the {st.session_state.create_direct_genre} genre" if st.session_state.create_direct_genre and st.session_state.create_direct_genre != "Any" else ""
+                
+                prompt = f"""
+Create a story based on this concept{genre_text}:
+
+**Concept:** {st.session_state.create_direct_topic}
+
+**Length:** {st.session_state.create_direct_length}
+
+Write an engaging, creative story that brings this idea to life. Be vivid, entertaining, and surprising!
+"""
+                response = assistant.send_message(prompt)
+                st.session_state.create_direct_result = response
+                st.session_state.create_direct_stage = "result"
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+    
+    elif st.session_state.create_direct_stage == "result":
+        st.markdown(f"""
+        <div class="story-output animate-in">
+            <div style="font-size: 1.5rem; margin-bottom: 1rem; text-align: center;">
+                ✍️ Your Story
+            </div>
+            {st.session_state.create_direct_result}
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("🔄 Regenerate", use_container_width=True):
+                st.session_state.create_direct_stage = "generating"
+                st.rerun()
+        with col2:
+            if st.button("📝 New Story", use_container_width=True):
+                st.session_state.create_direct_stage = "topic"
+                st.session_state.create_direct_topic = ""
+                st.session_state.create_direct_genre = None
+                st.rerun()
+        with col3:
+            st.download_button(
+                "💾 Download",
+                st.session_state.create_direct_result,
+                file_name="story.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
+
+
+# =============================================================================
+# STORYLINE MODE
+# =============================================================================
+def render_storyline():
+    """Render the Storyline mode - multi-part episodic storytelling."""
+    quip = QUIP_PERSONAS[st.session_state.current_quip]
+    
+    # Initialize Storyline specific state
+    if "storyline_stage" not in st.session_state:
+        st.session_state.storyline_stage = "setup"
+    if "storyline_premise" not in st.session_state:
+        st.session_state.storyline_premise = ""
+    if "storyline_episodes" not in st.session_state:
+        st.session_state.storyline_episodes = []
+    if "storyline_current_ep" not in st.session_state:
+        st.session_state.storyline_current_ep = 0
+    
+    st.markdown(f"""
+    <div class="mode-badge">{quip['icon']} {quip['name']} • 📚 Storyline</div>
+    """, unsafe_allow_html=True)
+    
+    if st.session_state.storyline_stage == "setup":
+        st.markdown("""
+        <div class="assistant-message animate-in">
+            <p>📚 <strong>Storyline Mode</strong></p>
+            <p>Let's create an epic multi-episode story! First, tell me about your story premise. What's the setting, main character, and central conflict?</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        premise = st.text_area(
+            "Story Premise",
+            placeholder="Example: In a world where dreams are currency, a young dream-thief must steal the most valuable dream ever seen to save their dying sister...",
+            height=150,
+            key="storyline_premise_input"
+        )
+        
+        num_episodes = st.slider("Number of Episodes", min_value=2, max_value=5, value=3)
+        st.session_state.storyline_num_episodes = num_episodes
+        
+        if st.button("🎬 Begin Story", use_container_width=True):
+            if premise.strip():
+                st.session_state.storyline_premise = premise
+                st.session_state.storyline_stage = "generating"
+                st.session_state.storyline_current_ep = 1
+                st.rerun()
+            else:
+                st.warning("Please enter a story premise!")
+    
+    elif st.session_state.storyline_stage == "generating":
+        ep_num = st.session_state.storyline_current_ep
+        total_eps = st.session_state.storyline_num_episodes
+        
+        with st.spinner(f"📖 Writing Episode {ep_num} of {total_eps}..."):
+            try:
+                assistant = get_assistant()
+                
+                previous_context = ""
+                if st.session_state.storyline_episodes:
+                    previous_context = f"\n\nPrevious episodes summary:\n" + "\n---\n".join([f"Episode {i+1}: {ep[:200]}..." for i, ep in enumerate(st.session_state.storyline_episodes)])
+                
+                if ep_num == 1:
+                    prompt = f"""
+Create Episode 1 of a {total_eps}-part story series.
+
+**Premise:** {st.session_state.storyline_premise}
+
+Write an engaging opening episode that:
+- Introduces the main character(s) and setting
+- Establishes the central conflict
+- Ends with a hook that makes readers want more
+
+Keep it around 300-400 words. End with "TO BE CONTINUED..."
+"""
+                elif ep_num == total_eps:
+                    prompt = f"""
+Create the FINAL Episode ({ep_num}) of a {total_eps}-part story series.
+
+**Original Premise:** {st.session_state.storyline_premise}
+{previous_context}
+
+Write a satisfying conclusion that:
+- Resolves the main conflict
+- Provides character growth/payoff
+- Delivers an memorable ending
+
+Keep it around 400-500 words.
+"""
+                else:
+                    prompt = f"""
+Create Episode {ep_num} of a {total_eps}-part story series.
+
+**Original Premise:** {st.session_state.storyline_premise}
+{previous_context}
+
+Write this middle episode that:
+- Continues the story naturally
+- Raises the stakes or introduces complications
+- Ends with a cliffhanger or hook
+
+Keep it around 300-400 words. End with "TO BE CONTINUED..."
+"""
+                
+                response = assistant.send_message(prompt)
+                st.session_state.storyline_episodes.append(response)
+                st.session_state.storyline_stage = "episode"
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+    
+    elif st.session_state.storyline_stage == "episode":
+        ep_num = st.session_state.storyline_current_ep
+        total_eps = st.session_state.storyline_num_episodes
+        
+        # Episode tabs
+        if len(st.session_state.storyline_episodes) > 1:
+            tabs = st.tabs([f"📖 Episode {i+1}" for i in range(len(st.session_state.storyline_episodes))])
+            for i, tab in enumerate(tabs):
+                with tab:
+                    st.markdown(f"""
+                    <div class="story-output">
+                        <div style="font-size: 1.2rem; margin-bottom: 1rem; text-align: center;">
+                            📖 Episode {i+1} of {total_eps}
+                        </div>
+                        {st.session_state.storyline_episodes[i]}
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div class="story-output animate-in">
+                <div style="font-size: 1.2rem; margin-bottom: 1rem; text-align: center;">
+                    📖 Episode {ep_num} of {total_eps}
+                </div>
+                {st.session_state.storyline_episodes[-1]}
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Navigation
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if ep_num < total_eps:
+                if st.button(f"📖 Generate Episode {ep_num + 1}", use_container_width=True):
+                    st.session_state.storyline_current_ep += 1
+                    st.session_state.storyline_stage = "generating"
+                    st.rerun()
+        with col2:
+            if st.button("🔄 Start New Story", use_container_width=True):
+                st.session_state.storyline_stage = "setup"
+                st.session_state.storyline_episodes = []
+                st.session_state.storyline_current_ep = 0
+                st.session_state.storyline_premise = ""
+                st.rerun()
+        with col3:
+            full_story = "\n\n---\n\n".join([f"# Episode {i+1}\n\n{ep}" for i, ep in enumerate(st.session_state.storyline_episodes)])
+            st.download_button(
+                "💾 Download All",
+                full_story,
+                file_name="storyline.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
+
+
+# =============================================================================
+# PLAIDPIC MODE
+# =============================================================================
+def render_plaidpic():
+    """Render the PlaidPic mode - story to visual description/prompts."""
+    quip = QUIP_PERSONAS[st.session_state.current_quip]
+    
+    if "plaidpic_stage" not in st.session_state:
+        st.session_state.plaidpic_stage = "input"
+    if "plaidpic_story" not in st.session_state:
+        st.session_state.plaidpic_story = ""
+    
+    st.markdown(f"""
+    <div class="mode-badge">{quip['icon']} {quip['name']} • 🎨 PlaidPic</div>
+    """, unsafe_allow_html=True)
+    
+    if st.session_state.plaidpic_stage == "input":
+        st.markdown("""
+        <div class="assistant-message animate-in">
+            <p>🎨 <strong>PlaidPic Mode</strong></p>
+            <p>Paste or write a story, and I'll create detailed visual descriptions for key scenes that you can use with image generators like DALL-E, Midjourney, or Stable Diffusion!</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        story = st.text_area(
+            "Your Story",
+            placeholder="Paste your story here, or write a quick scene...",
+            height=200,
+            key="plaidpic_story_input"
+        )
+        
+        # Style selection
+        st.markdown("**Visual Style:**")
+        style_options = ["Comic/Cartoon", "Cinematic/Realistic", "Anime/Manga", "Watercolor/Artistic", "Dark/Noir", "Whimsical/Fantasy"]
+        cols = st.columns(3)
+        for i, style in enumerate(style_options):
+            with cols[i % 3]:
+                if st.button(style, key=f"pic_style_{style}", use_container_width=True):
+                    st.session_state.plaidpic_style = style
+        
+        if "plaidpic_style" in st.session_state:
+            st.success(f"**Selected Style:** {st.session_state.plaidpic_style}")
+        
+        num_panels = st.slider("Number of Scenes/Panels", min_value=1, max_value=6, value=3)
+        st.session_state.plaidpic_panels = num_panels
+        
+        if st.button("🎨 Generate Visual Prompts", use_container_width=True):
+            if story.strip():
+                st.session_state.plaidpic_story = story
+                st.session_state.plaidpic_stage = "generating"
+                st.rerun()
+            else:
+                st.warning("Please enter a story!")
+    
+    elif st.session_state.plaidpic_stage == "generating":
+        with st.spinner("🎨 Creating visual prompts..."):
+            try:
+                assistant = get_assistant()
+                style = st.session_state.get("plaidpic_style", "Cinematic/Realistic")
+                num_panels = st.session_state.plaidpic_panels
+                
+                prompt = f"""
+Analyze this story and create {num_panels} detailed image generation prompts for key visual moments.
+
+**Story:**
+{st.session_state.plaidpic_story}
+
+**Visual Style:** {style}
+
+For each scene, provide:
+1. **Scene Title:** A short descriptive title
+2. **Image Prompt:** A detailed prompt suitable for DALL-E or Midjourney (include composition, lighting, mood, style details)
+3. **Caption:** A short caption/description for the scene
+
+Format each as a clear, numbered panel. Make prompts vivid and specific!
+"""
+                
+                response = assistant.send_message(prompt)
+                st.session_state.plaidpic_result = response
+                st.session_state.plaidpic_stage = "result"
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+    
+    elif st.session_state.plaidpic_stage == "result":
+        st.markdown(f"""
+        <div class="story-output animate-in">
+            <div style="font-size: 1.5rem; margin-bottom: 1rem; text-align: center;">
+                🎨 Your Visual Prompts
+            </div>
+            {st.session_state.plaidpic_result}
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Regenerate", use_container_width=True):
+                st.session_state.plaidpic_stage = "generating"
+                st.rerun()
+        with col2:
+            if st.button("📝 New Story", use_container_width=True):
+                st.session_state.plaidpic_stage = "input"
+                st.session_state.plaidpic_story = ""
+                st.rerun()
+        
+        st.download_button(
+            "💾 Download Prompts",
+            st.session_state.plaidpic_result,
+            file_name="plaidpic_prompts.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
+
+
+# =============================================================================
+# PLAIDMAGGEN MODE (Comic Generation)
+# =============================================================================
+def render_plaidmaggen():
+    """Render PlaidMagGen mode - comic/magazine style story panels."""
+    quip = QUIP_PERSONAS[st.session_state.current_quip]
+    
+    if "maggen_stage" not in st.session_state:
+        st.session_state.maggen_stage = "input"
+    
+    st.markdown(f"""
+    <div class="mode-badge">{quip['icon']} {quip['name']} • 📰 PlaidMagGen</div>
+    """, unsafe_allow_html=True)
+    
+    if st.session_state.maggen_stage == "input":
+        st.markdown("""
+        <div class="assistant-message animate-in">
+            <p>📰 <strong>PlaidMagGen Mode</strong></p>
+            <p>Create a comic-style story with panel-by-panel descriptions! Perfect for visual storytelling.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        concept = st.text_area(
+            "Comic Concept",
+            placeholder="Example: A superhero whose only power is making perfect toast, facing off against the villain who controls all breakfast appliances...",
+            height=120
+        )
+        
+        panel_count = st.select_slider(
+            "Number of Panels",
+            options=[3, 4, 5, 6],
+            value=4
+        )
+        st.session_state.maggen_panels = panel_count
+        
+        comic_style = st.selectbox(
+            "Comic Style",
+            ["Classic Superhero", "Manga/Anime", "Indie/Alternative", "Newspaper Strip", "Graphic Novel"]
+        )
+        st.session_state.maggen_style = comic_style
+        
+        if st.button("📰 Generate Comic", use_container_width=True):
+            if concept.strip():
+                st.session_state.maggen_concept = concept
+                st.session_state.maggen_stage = "generating"
+                st.rerun()
+            else:
+                st.warning("Please enter a concept!")
+    
+    elif st.session_state.maggen_stage == "generating":
+        with st.spinner("📰 Creating your comic..."):
+            try:
+                assistant = get_assistant()
+                
+                prompt = f"""
+Create a {st.session_state.maggen_panels}-panel comic story in {st.session_state.maggen_style} style.
+
+**Concept:** {st.session_state.maggen_concept}
+
+For each panel, provide:
+1. **Panel Number**
+2. **Visual Description:** What we see (characters, setting, action, expressions)
+3. **Dialogue/Caption:** Speech bubbles or narrative captions
+4. **Panel Notes:** Composition, camera angle, mood
+
+Make it dynamic, expressive, and tell a complete mini-story with a satisfying ending or punchline!
+"""
+                
+                response = assistant.send_message(prompt)
+                st.session_state.maggen_result = response
+                st.session_state.maggen_stage = "result"
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+    
+    elif st.session_state.maggen_stage == "result":
+        st.markdown(f"""
+        <div class="story-output animate-in">
+            <div style="font-size: 1.5rem; margin-bottom: 1rem; text-align: center;">
+                📰 Your Comic Script
+            </div>
+            {st.session_state.maggen_result}
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Regenerate", use_container_width=True):
+                st.session_state.maggen_stage = "generating"
+                st.rerun()
+        with col2:
+            if st.button("📝 New Comic", use_container_width=True):
+                st.session_state.maggen_stage = "input"
+                st.rerun()
+
+
+# =============================================================================
+# PLAIDPLAY MODE (Interactive Story)
+# =============================================================================
+def render_plaidplay():
+    """Render PlaidPlay mode - interactive choose-your-own-adventure."""
+    quip = QUIP_PERSONAS[st.session_state.current_quip]
+    
+    if "plaidplay_stage" not in st.session_state:
+        st.session_state.plaidplay_stage = "setup"
+    if "plaidplay_history" not in st.session_state:
+        st.session_state.plaidplay_history = []
+    
+    st.markdown(f"""
+    <div class="mode-badge">{quip['icon']} {quip['name']} • 🎮 PlaidPlay</div>
+    """, unsafe_allow_html=True)
+    
+    if st.session_state.plaidplay_stage == "setup":
+        st.markdown("""
+        <div class="assistant-message animate-in">
+            <p>🎮 <strong>PlaidPlay Mode</strong></p>
+            <p>Welcome to interactive storytelling! Choose your adventure setting and let's begin!</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        settings = {
+            "🏰 Fantasy Kingdom": "A magical realm with dragons, wizards, and ancient prophecies",
+            "🚀 Space Station": "A futuristic space station at the edge of known space",
+            "🔍 Mystery Mansion": "A spooky Victorian mansion with secrets in every room",
+            "🏝️ Tropical Island": "A mysterious island with hidden treasures and strange inhabitants",
+            "🌆 Cyberpunk City": "A neon-lit metropolis where technology and humanity blur"
+        }
+        
+        st.markdown("**Choose Your Setting:**")
+        for setting, description in settings.items():
+            if st.button(f"{setting}\n{description}", key=f"setting_{setting}", use_container_width=True):
+                st.session_state.plaidplay_setting = setting
+                st.session_state.plaidplay_stage = "playing"
+                st.rerun()
+    
+    elif st.session_state.plaidplay_stage == "playing":
+        # Display history
+        for entry in st.session_state.plaidplay_history:
+            if entry["type"] == "story":
+                st.markdown(f"""
+                <div class="assistant-message">
+                    {entry["content"]}
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="user-message">
+                    ▶ {entry["content"]}
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # Get next story beat or choices
+        if not st.session_state.plaidplay_history or st.session_state.get("plaidplay_needs_story"):
+            with st.spinner("📖 The story unfolds..."):
+                try:
+                    assistant = get_assistant()
+                    
+                    history_context = "\n".join([f"{'Story:' if e['type'] == 'story' else 'Player chose:'} {e['content']}" for e in st.session_state.plaidplay_history[-6:]])
+                    
+                    if not st.session_state.plaidplay_history:
+                        prompt = f"""
+Start an interactive adventure story in this setting: {st.session_state.plaidplay_setting}
+
+Write an engaging opening scene (2-3 paragraphs) that:
+- Sets the atmosphere and introduces the protagonist
+- Creates immediate intrigue or tension
+- Ends with exactly 3 numbered choices for what the player does next
+
+Format:
+[Story paragraphs]
+
+What do you do?
+1. [First choice]
+2. [Second choice]
+3. [Third choice]
+"""
+                    else:
+                        last_choice = [e for e in st.session_state.plaidplay_history if e["type"] == "choice"][-1]["content"]
+                        prompt = f"""
+Continue the interactive adventure:
+
+Previous context:
+{history_context}
+
+The player chose: {last_choice}
+
+Write the next scene (2-3 paragraphs) that:
+- Responds meaningfully to their choice
+- Advances the story with new developments
+- Ends with exactly 3 numbered choices
+
+Format:
+[Story paragraphs]
+
+What do you do?
+1. [First choice]
+2. [Second choice]
+3. [Third choice]
+"""
+                    
+                    response = assistant.send_message(prompt)
+                    st.session_state.plaidplay_history.append({"type": "story", "content": response})
+                    st.session_state.plaidplay_needs_story = False
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+        
+        # Show choice buttons
+        st.markdown("---")
+        st.markdown("**Your Choice:**")
+        
+        choice = st.text_input("Type your choice or action:", key="plaidplay_choice_input", placeholder="Enter 1, 2, 3, or describe your own action...")
+        
+        if st.button("▶ Make Choice", use_container_width=True):
+            if choice.strip():
+                st.session_state.plaidplay_history.append({"type": "choice", "content": choice.strip()})
+                st.session_state.plaidplay_needs_story = True
+                st.rerun()
+        
+        st.markdown("---")
+        if st.button("🔄 Start New Adventure", use_container_width=True):
+            st.session_state.plaidplay_stage = "setup"
+            st.session_state.plaidplay_history = []
+            st.rerun()
+
+
+# =============================================================================
 # MAIN APPLICATION
 # =============================================================================
 def main():
@@ -905,13 +1532,19 @@ def main():
             render_prompt_collection()
         elif current_stage == "story":
             render_story_generation()
+    elif current_mode == "create_direct":
+        render_create_direct()
+    elif current_mode == "storyline":
+        render_storyline()
+    elif current_mode == "plaid_pic":
+        render_plaidpic()
+    elif current_mode == "plaid_mag_gen":
+        render_plaidmaggen()
+    elif current_mode == "plaid_play":
+        render_plaidplay()
     else:
-        # Other modes - show coming soon
-        st.info(f"🚧 **{WORKFLOW_MODES[current_mode]['name']}** mode is coming soon!")
-        if st.button("Try Lib-Ate Mode Instead"):
-            st.session_state.current_mode = "lib_ate"
-            reset_workflow()
-            st.rerun()
+        # Fallback for any undefined modes
+        render_chat_mode()
 
 
 if __name__ == "__main__":
