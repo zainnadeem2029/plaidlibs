@@ -357,7 +357,9 @@ def init_session_state():
         "total_prompts": 6,
         "story_generated": False,
         "thread_id": None,
-        "assistant": None
+        "assistant": None,
+        "enable_image_generation": True,  # Enable DALL-E image generation
+        "generated_images": []  # Store generated images
     }
     
     for key, value in defaults.items():
@@ -441,6 +443,22 @@ def render_sidebar():
             <div style="font-size: 0.8rem; color: #A1A1AA; margin-top: 0.5rem;">{current_quip['description']}</div>
         </div>
         """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Image Generation Toggle
+        st.markdown("#### 🎨 Image Generation")
+        enable_images = st.toggle(
+            "Enable DALL-E Images",
+            value=st.session_state.get("enable_image_generation", True),
+            key="image_gen_toggle",
+            help="Generate AI images for your stories using DALL-E 3"
+        )
+        if enable_images != st.session_state.get("enable_image_generation", True):
+            st.session_state.enable_image_generation = enable_images
+        
+        if enable_images:
+            st.markdown('<div style="background: rgba(16, 185, 129, 0.1); border-radius: 8px; padding: 0.5rem; font-size: 0.8rem; color: #10B981;">✨ Images will be generated with your stories</div>', unsafe_allow_html=True)
         
         st.markdown("---")
         
@@ -755,6 +773,18 @@ Remember to:
                 response = assistant.send_message(generation_prompt)
                 st.session_state.generated_story = response
                 st.session_state.story_generated = True
+                
+                # Generate image if enabled
+                if st.session_state.get("enable_image_generation", True):
+                    with st.spinner("🎨 Creating illustration..."):
+                        # Create an image prompt based on the story
+                        image_prompt = f"A vivid, artistic illustration for a {st.session_state.selected_genre} {st.session_state.selected_style}. Style: colorful, {st.session_state.selected_absurdity.lower()} whimsy, storybook quality. Theme incorporates: {', '.join(st.session_state.collected_prompts[:3])}. No text or words in the image."
+                        image_result = assistant.generate_image(image_prompt, style="vivid")
+                        if "url" in image_result:
+                            st.session_state.story_image = image_result["url"]
+                        else:
+                            st.session_state.story_image = None
+                
                 st.rerun()
                 
             except Exception as e:
@@ -764,6 +794,10 @@ Remember to:
     
     # Display the generated story
     if hasattr(st.session_state, 'generated_story'):
+        # Display image if available
+        if hasattr(st.session_state, 'story_image') and st.session_state.story_image:
+            st.image(st.session_state.story_image, caption="🎨 AI-Generated Illustration", use_container_width=True)
+        
         st.markdown(f"""
         <div class="story-output animate-in">
             <div style="font-size: 1.5rem; margin-bottom: 1rem; text-align: center;">
@@ -778,6 +812,8 @@ Remember to:
         with col1:
             if st.button("🔄 Generate Another", use_container_width=True):
                 st.session_state.story_generated = False
+                if hasattr(st.session_state, 'story_image'):
+                    del st.session_state.story_image
                 st.rerun()
         with col2:
             if st.button("📝 New Story", use_container_width=True):
@@ -922,12 +958,28 @@ Write an engaging, creative story that brings this idea to life. Be vivid, enter
 """
                 response = assistant.send_message(prompt)
                 st.session_state.create_direct_result = response
+                
+                # Generate image if enabled
+                if st.session_state.get("enable_image_generation", True):
+                    with st.spinner("🎨 Creating illustration..."):
+                        genre_style = st.session_state.create_direct_genre if st.session_state.create_direct_genre and st.session_state.create_direct_genre != "Any" else "creative"
+                        image_prompt = f"A vivid, artistic illustration depicting: {st.session_state.create_direct_topic[:200]}. Style: {genre_style}, cinematic lighting, detailed, storybook quality. No text or words in the image."
+                        image_result = assistant.generate_image(image_prompt, style="vivid")
+                        if "url" in image_result:
+                            st.session_state.create_direct_image = image_result["url"]
+                        else:
+                            st.session_state.create_direct_image = None
+                
                 st.session_state.create_direct_stage = "result"
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {str(e)}")
     
     elif st.session_state.create_direct_stage == "result":
+        # Display image if available
+        if hasattr(st.session_state, 'create_direct_image') and st.session_state.create_direct_image:
+            st.image(st.session_state.create_direct_image, caption="🎨 AI-Generated Illustration", use_container_width=True)
+        
         st.markdown(f"""
         <div class="story-output animate-in">
             <div style="font-size: 1.5rem; margin-bottom: 1rem; text-align: center;">
@@ -941,12 +993,16 @@ Write an engaging, creative story that brings this idea to life. Be vivid, enter
         with col1:
             if st.button("🔄 Regenerate", use_container_width=True):
                 st.session_state.create_direct_stage = "generating"
+                if hasattr(st.session_state, 'create_direct_image'):
+                    del st.session_state.create_direct_image
                 st.rerun()
         with col2:
             if st.button("📝 New Story", use_container_width=True):
                 st.session_state.create_direct_stage = "topic"
                 st.session_state.create_direct_topic = ""
                 st.session_state.create_direct_genre = None
+                if hasattr(st.session_state, 'create_direct_image'):
+                    del st.session_state.create_direct_image
                 st.rerun()
         with col3:
             st.download_button(
@@ -1016,7 +1072,7 @@ def render_storyline():
                 
                 previous_context = ""
                 if st.session_state.storyline_episodes:
-                    previous_context = f"\n\nPrevious episodes summary:\n" + "\n---\n".join([f"Episode {i+1}: {ep[:200]}..." for i, ep in enumerate(st.session_state.storyline_episodes)])
+                    previous_context = f"\n\nPrevious episodes summary:\n" + "\n---\n".join([f"Episode {i+1}: {ep['text'][:200]}..." for i, ep in enumerate(st.session_state.storyline_episodes)])
                 
                 if ep_num == 1:
                     prompt = f"""
@@ -1061,7 +1117,17 @@ Keep it around 300-400 words. End with "TO BE CONTINUED..."
 """
                 
                 response = assistant.send_message(prompt)
-                st.session_state.storyline_episodes.append(response)
+                
+                # Generate episode image if enabled
+                episode_image = None
+                if st.session_state.get("enable_image_generation", True):
+                    with st.spinner(f"🎨 Creating Episode {ep_num} illustration..."):
+                        image_prompt = f"A dramatic cinematic illustration for Episode {ep_num} of an epic story about: {st.session_state.storyline_premise[:150]}. Style: epic, detailed, storybook fantasy art, dramatic lighting. No text or words in the image."
+                        image_result = assistant.generate_image(image_prompt, style="vivid")
+                        if "url" in image_result:
+                            episode_image = image_result["url"]
+                
+                st.session_state.storyline_episodes.append({"text": response, "image": episode_image})
                 st.session_state.storyline_stage = "episode"
                 st.rerun()
             except Exception as e:
@@ -1076,21 +1142,29 @@ Keep it around 300-400 words. End with "TO BE CONTINUED..."
             tabs = st.tabs([f"📖 Episode {i+1}" for i in range(len(st.session_state.storyline_episodes))])
             for i, tab in enumerate(tabs):
                 with tab:
+                    episode = st.session_state.storyline_episodes[i]
+                    # Display episode image if available
+                    if episode.get("image"):
+                        st.image(episode["image"], caption=f"🎨 Episode {i+1} Illustration", use_container_width=True)
                     st.markdown(f"""
                     <div class="story-output">
                         <div style="font-size: 1.2rem; margin-bottom: 1rem; text-align: center;">
                             📖 Episode {i+1} of {total_eps}
                         </div>
-                        {st.session_state.storyline_episodes[i]}
+                        {episode['text']}
                     </div>
                     """, unsafe_allow_html=True)
         else:
+            episode = st.session_state.storyline_episodes[-1]
+            # Display episode image if available
+            if episode.get("image"):
+                st.image(episode["image"], caption=f"🎨 Episode {ep_num} Illustration", use_container_width=True)
             st.markdown(f"""
             <div class="story-output animate-in">
                 <div style="font-size: 1.2rem; margin-bottom: 1rem; text-align: center;">
                     📖 Episode {ep_num} of {total_eps}
                 </div>
-                {st.session_state.storyline_episodes[-1]}
+                {episode['text']}
             </div>
             """, unsafe_allow_html=True)
         
@@ -1110,7 +1184,7 @@ Keep it around 300-400 words. End with "TO BE CONTINUED..."
                 st.session_state.storyline_premise = ""
                 st.rerun()
         with col3:
-            full_story = "\n\n---\n\n".join([f"# Episode {i+1}\n\n{ep}" for i, ep in enumerate(st.session_state.storyline_episodes)])
+            full_story = "\n\n---\n\n".join([f"# Episode {i+1}\n\n{ep['text']}" for i, ep in enumerate(st.session_state.storyline_episodes)])
             st.download_button(
                 "💾 Download All",
                 full_story,
@@ -1199,12 +1273,33 @@ Format each as a clear, numbered panel. Make prompts vivid and specific!
                 
                 response = assistant.send_message(prompt)
                 st.session_state.plaidpic_result = response
+                
+                # Generate actual images if enabled
+                if st.session_state.get("enable_image_generation", True):
+                    st.session_state.plaidpic_images = []
+                    for i in range(min(num_panels, 4)):  # Limit to 4 images max for cost
+                        with st.spinner(f"🎨 Generating image {i+1} of {min(num_panels, 4)}..."):
+                            # Create a simple image prompt based on the story
+                            image_prompt = f"Scene {i+1} from a {style.lower()} visual story: {st.session_state.plaidpic_story[:150]}. Style: {style}, detailed, artistic composition. No text or words in the image."
+                            image_result = assistant.generate_image(image_prompt, style="vivid")
+                            if "url" in image_result:
+                                st.session_state.plaidpic_images.append(image_result["url"])
+                
                 st.session_state.plaidpic_stage = "result"
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {str(e)}")
     
     elif st.session_state.plaidpic_stage == "result":
+        # Display generated images if available
+        if hasattr(st.session_state, 'plaidpic_images') and st.session_state.plaidpic_images:
+            st.markdown("### 🖼️ Generated Images")
+            cols = st.columns(min(len(st.session_state.plaidpic_images), 2))
+            for i, img_url in enumerate(st.session_state.plaidpic_images):
+                with cols[i % 2]:
+                    st.image(img_url, caption=f"Scene {i+1}", use_container_width=True)
+            st.markdown("---")
+        
         st.markdown(f"""
         <div class="story-output animate-in">
             <div style="font-size: 1.5rem; margin-bottom: 1rem; text-align: center;">
@@ -1217,12 +1312,16 @@ Format each as a clear, numbered panel. Make prompts vivid and specific!
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🔄 Regenerate", use_container_width=True):
+                if hasattr(st.session_state, 'plaidpic_images'):
+                    del st.session_state.plaidpic_images
                 st.session_state.plaidpic_stage = "generating"
                 st.rerun()
         with col2:
             if st.button("📝 New Story", use_container_width=True):
                 st.session_state.plaidpic_stage = "input"
                 st.session_state.plaidpic_story = ""
+                if hasattr(st.session_state, 'plaidpic_images'):
+                    del st.session_state.plaidpic_images
                 st.rerun()
         
         st.download_button(
@@ -1304,12 +1403,41 @@ Make it dynamic, expressive, and tell a complete mini-story with a satisfying en
                 
                 response = assistant.send_message(prompt)
                 st.session_state.maggen_result = response
+                
+                # Generate comic panel images if enabled
+                if st.session_state.get("enable_image_generation", True):
+                    st.session_state.maggen_images = []
+                    num_panels = min(st.session_state.maggen_panels, 4)  # Limit for cost
+                    for i in range(num_panels):
+                        with st.spinner(f"🎨 Drawing panel {i+1} of {num_panels}..."):
+                            style_map = {
+                                "Classic Superhero": "classic superhero comic book art, bold colors, dynamic action poses",
+                                "Manga/Anime": "manga anime style, expressive eyes, dynamic lines",
+                                "Indie/Alternative": "indie comic art style, unique artistic flair",
+                                "Newspaper Strip": "newspaper comic strip style, clean lines, humorous",
+                                "Graphic Novel": "graphic novel art, cinematic, detailed"
+                            }
+                            art_style = style_map.get(st.session_state.maggen_style, "comic book art")
+                            image_prompt = f"Comic panel {i+1}: {st.session_state.maggen_concept[:100]}. Style: {art_style}, sequential art, no text or speech bubbles. High quality illustration."
+                            image_result = assistant.generate_image(image_prompt, style="vivid")
+                            if "url" in image_result:
+                                st.session_state.maggen_images.append(image_result["url"])
+                
                 st.session_state.maggen_stage = "result"
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {str(e)}")
     
     elif st.session_state.maggen_stage == "result":
+        # Display generated comic panels if available
+        if hasattr(st.session_state, 'maggen_images') and st.session_state.maggen_images:
+            st.markdown("### 📰 Your Comic Panels")
+            cols = st.columns(2)
+            for i, img_url in enumerate(st.session_state.maggen_images):
+                with cols[i % 2]:
+                    st.image(img_url, caption=f"Panel {i+1}", use_container_width=True)
+            st.markdown("---")
+        
         st.markdown(f"""
         <div class="story-output animate-in">
             <div style="font-size: 1.5rem; margin-bottom: 1rem; text-align: center;">
@@ -1322,11 +1450,15 @@ Make it dynamic, expressive, and tell a complete mini-story with a satisfying en
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🔄 Regenerate", use_container_width=True):
+                if hasattr(st.session_state, 'maggen_images'):
+                    del st.session_state.maggen_images
                 st.session_state.maggen_stage = "generating"
                 st.rerun()
         with col2:
             if st.button("📝 New Comic", use_container_width=True):
                 st.session_state.maggen_stage = "input"
+                if hasattr(st.session_state, 'maggen_images'):
+                    del st.session_state.maggen_images
                 st.rerun()
 
 
@@ -1373,6 +1505,9 @@ def render_plaidplay():
         # Display history
         for entry in st.session_state.plaidplay_history:
             if entry["type"] == "story":
+                # Display scene image if available
+                if entry.get("image"):
+                    st.image(entry["image"], caption="🎮 Scene Illustration", use_container_width=True)
                 st.markdown(f"""
                 <div class="assistant-message">
                     {entry["content"]}
@@ -1435,7 +1570,18 @@ What do you do?
 """
                     
                     response = assistant.send_message(prompt)
-                    st.session_state.plaidplay_history.append({"type": "story", "content": response})
+                    
+                    # Generate scene image if enabled
+                    scene_image = None
+                    if st.session_state.get("enable_image_generation", True):
+                        with st.spinner("🎨 Illustrating scene..."):
+                            setting_clean = st.session_state.plaidplay_setting.replace("🏰", "").replace("🚀", "").replace("🔍", "").replace("🏝️", "").replace("🌆", "").strip()
+                            image_prompt = f"Interactive adventure scene in a {setting_clean} setting. Style: immersive, atmospheric, game art, cinematic lighting, dramatic. No text or words in the image."
+                            image_result = assistant.generate_image(image_prompt, style="vivid")
+                            if "url" in image_result:
+                                scene_image = image_result["url"]
+                    
+                    st.session_state.plaidplay_history.append({"type": "story", "content": response, "image": scene_image})
                     st.session_state.plaidplay_needs_story = False
                     st.rerun()
                 except Exception as e:

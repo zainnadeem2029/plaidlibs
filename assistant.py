@@ -159,6 +159,41 @@ class PlaidLibsAssistant:
         """Reset the conversation by creating a new thread."""
         self.thread_id = None
         return self.create_thread()
+    
+    def generate_image(self, prompt: str, size: str = "1024x1024", style: str = "vivid", quality: str = "standard") -> dict:
+        """
+        Generate an image using DALL-E 3.
+        
+        Args:
+            prompt: The image generation prompt
+            size: Image size - "1024x1024", "1792x1024", or "1024x1792"
+            style: "vivid" for hyper-real/dramatic, "natural" for natural look
+            quality: "standard" or "hd"
+            
+        Returns:
+            Dictionary with 'url' and 'revised_prompt' keys, or 'error' key if failed
+        """
+        try:
+            response = self.client.images.generate(
+                model="dall-e-3",
+                prompt=prompt,
+                size=size,
+                style=style,
+                quality=quality,
+                n=1
+            )
+            
+            if response.data and len(response.data) > 0:
+                image_data = response.data[0]
+                return {
+                    "url": image_data.url,
+                    "revised_prompt": image_data.revised_prompt
+                }
+            else:
+                return {"error": "No image data returned"}
+                
+        except Exception as e:
+            return {"error": str(e)}
 
 
 def create_assistant(name: str, instructions: str, model: str = "gpt-4-turbo-preview") -> str:
