@@ -854,7 +854,7 @@ def render_lib_ate():
         st.markdown(f'<div class="{role_class}">{msg["content"]}</div>', unsafe_allow_html=True)
     
     # Handle user input
-    user_input = st.chat_input("Type your message...")
+    user_input = st.chat_input("Type your message...", key="lib_ate_chat")
     
     if user_input:
         # Add user message to state
@@ -988,6 +988,8 @@ def render_lib_ate():
                  if hasattr(st.session_state, "lib_ate_image"):
                     del st.session_state.lib_ate_image
                  st.rerun()
+
+def render_chat_mode():
     """Render the free-form chat mode (PlaidChat)."""
     quip = QUIP_PERSONAS[st.session_state.current_quip]
     
@@ -1010,7 +1012,7 @@ def render_lib_ate():
             st.markdown(f'<div class="assistant-message">{msg["content"]}</div>', unsafe_allow_html=True)
     
     # Chat input
-    user_input = st.chat_input("Type your message...")
+    user_input = st.chat_input("Type your message...", key="plaid_chat_input")
     
     if user_input:
         # Add user message
