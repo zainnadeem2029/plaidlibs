@@ -6,6 +6,7 @@ Powered by OpenAI Assistants API
 
 import streamlit as st
 import os
+import json
 from dotenv import load_dotenv
 from assistant import PlaidLibsAssistant
 from config import (
@@ -468,7 +469,8 @@ def render_sidebar():
             st.rerun()
         
         # Progress indicator (for Lib-Ate mode)
-        if st.session_state.current_mode == "lib_ate":
+        if st.session_state.current_mode == "lib_ate" and st.session_state.get("lib_ate_state") is None:
+            # Only show this legacy progress bar if we aren't in the new chat mode
             st.markdown("---")
             st.markdown("#### Progress")
             stages = ["Style", "Genre", "Absurdity", "Prompts", "Story"]
@@ -829,7 +831,163 @@ Remember to:
             )
 
 
-def render_chat_mode():
+def render_lib_ate():
+    """Render the Lib-Ate mode - Chat-based Hidden Story Game."""
+    quip = QUIP_PERSONAS[st.session_state.current_quip]
+    
+    # Initialize Lib-Ate specific state
+    if "lib_ate_state" not in st.session_state:
+        st.session_state.lib_ate_state = "init"
+        st.session_state.lib_ate_messages = []
+        
+        # Add welcome message
+        welcome_msg = f"🎭 **Welcome to Lib-Ate!**\n\nI'm {quip['name']}, and I've got a secret story hiding in my digital brain. I'll give you a teaser, and you give me words to fill in the blanks. When we're done, we'll reveal the masterpiece!\n\nReady to start? Type 'Yes' or tell me what kind of story you'd like!"
+        st.session_state.lib_ate_messages.append({"role": "assistant", "content": welcome_msg})
+
+    st.markdown(f"""
+    <div class="mode-badge">{quip['icon']} {quip['name']} • Lib-Ate</div>
+    """, unsafe_allow_html=True)
+
+    # Display chat history
+    for msg in st.session_state.lib_ate_messages:
+        role_class = "user-message" if msg["role"] == "user" else "assistant-message"
+        st.markdown(f'<div class="{role_class}">{msg["content"]}</div>', unsafe_allow_html=True)
+    
+    # Handle user input
+    user_input = st.chat_input("Type your message...")
+    
+    if user_input:
+        # Add user message to state
+        st.session_state.lib_ate_messages.append({"role": "user", "content": user_input})
+        
+        # Process input based on state
+        state = st.session_state.lib_ate_state
+        
+        assistant = get_assistant()
+        
+        if state == "init":
+            # Generate the hidden story and teaser
+            with st.spinner("🤫 Cooking up a secret story..."):
+                prompt = f"""
+                Create a HIDDEN Mad Libs style story based on this user input: "{user_input}".
+                
+                1. Generate a short, funny story (approx 100-150 words).
+                2. Identify 5-7 keywords to be replaced (nouns, verbs, adjectives).
+                3. Create a TEASER line that hints at the story without giving it away.
+                
+                Output ONLY valid JSON in this format:
+                {{
+                    "hidden_story_template": "The story with [PLACEHOLDERS] for the words.",
+                    "teaser": "The teaser text.",
+                    "required_inputs": ["Noun", "Adjective", "Verb", "Plural Noun", "Emotion"]
+                }}
+                """
+                response = assistant.send_message(prompt)
+                
+                try:
+                    # Clean up response to ensure valid JSON
+                    clean_response = response.replace("```json", "").replace("```", "").strip()
+                    data = json.loads(clean_response)
+                    
+                    st.session_state.lib_ate_data = data
+                    st.session_state.lib_ate_inputs = []
+                    st.session_state.lib_ate_current_input_idx = 0
+                    st.session_state.lib_ate_state = "collecting"
+                    
+                    # Assistant responds with Teaser and first prompt
+                    first_input_type = data["required_inputs"][0]
+                    response_msg = f"🤫 **Teaser:** {data['teaser']}\n\nI need a few things from you to reveal the truth.\n\nFirst, give me a **{first_input_type}**!"
+                    st.session_state.lib_ate_messages.append({"role": "assistant", "content": response_msg})
+                    
+                except Exception as e:
+                    st.session_state.lib_ate_messages.append({"role": "assistant", "content": f"Oops, I got my wires crossed. Let's try that again. (Error: {str(e)})"})
+        
+        elif state == "collecting":
+            # Store the current input
+            # We assume valid input for now
+            current_idx = st.session_state.lib_ate_current_input_idx
+            required = st.session_state.lib_ate_data["required_inputs"]
+            
+            st.session_state.lib_ate_inputs.append(user_input)
+            
+            # Check if we need more
+            if current_idx + 1 < len(required):
+                st.session_state.lib_ate_current_input_idx += 1
+                next_type = required[st.session_state.lib_ate_current_input_idx]
+                response_msg = f"Got it! Now I need a **{next_type}**."
+                st.session_state.lib_ate_messages.append({"role": "assistant", "content": response_msg})
+            else:
+                # All collected
+                st.session_state.lib_ate_state = "review"
+                summary = ", ".join([f"{req}: {val}" for req, val in zip(required, st.session_state.lib_ate_inputs)])
+                response_msg = f"✨ All inputs collected!\n\nHere's what I have:\n{summary}\n\n**Ready to reveal the story?** (Say Yes!)"
+                st.session_state.lib_ate_messages.append({"role": "assistant", "content": response_msg})
+        
+        elif state == "review":
+            if "yes" in user_input.lower() or "reveal" in user_input.lower():
+                st.session_state.lib_ate_state = "reveal"
+                
+                with st.spinner("Revealing the truth..."):
+                    story_template = st.session_state.lib_ate_data.get('hidden_story_template', '')
+                    inputs = st.session_state.lib_ate_inputs
+                    input_map = ", ".join([f"{req}={val}" for req, val in zip(st.session_state.lib_ate_data.get("required_inputs", []), inputs)])
+                    
+                    prompt = f"""
+                    Here is the hidden story template: "{story_template}"
+                    
+                    Here are the user inputs to fill in: {input_map}
+                    
+                    Rewrite the story replacing the placeholders with the user inputs. 
+                    Ensure grammatical correctness (fix a/an, tense if needed).
+                    Output ONLY the final story text.
+                    """
+                    
+                    final_story = assistant.send_message(prompt)
+                    st.session_state.lib_ate_final_story = final_story
+                    
+                    response_msg = f"🎉 **HERE IT IS!**\n\n{final_story}"
+                    st.session_state.lib_ate_messages.append({"role": "assistant", "content": response_msg})
+                    
+                    # Generate Image if enabled
+                    if st.session_state.get("enable_image_generation", True):
+                         with st.spinner("🎨 Painting the scene..."):
+                             image_prompt = f"A whimsical illustration for this story: {final_story[:200]}. Style: colorful, storybook. No text."
+                             img_res = assistant.generate_image(image_prompt)
+                             if "url" in img_res:
+                                 st.session_state.lib_ate_image = img_res["url"]
+            else:
+                st.session_state.lib_ate_messages.append({"role": "assistant", "content": "Just say 'Yes' to reveal!"})
+                
+        elif state == "reveal":
+            # Mostly listening directly here, but we also have buttons below
+            pass
+
+        st.rerun()
+
+    # Post-Reveal Controls
+    if st.session_state.get("lib_ate_state") == "reveal":
+        st.markdown("---")
+        st.markdown("### 🎬 Post-Story Options")
+        
+        if hasattr(st.session_state, "lib_ate_image"):
+             st.image(st.session_state.lib_ate_image, caption="Generated Illustration", use_container_width=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+             st.download_button(
+                "💾 Download Story",
+                st.session_state.get("lib_ate_final_story", ""),
+                file_name="lib_ate_story.txt",
+                mime="text/plain",
+                use_container_width=True
+             )
+        with col2:
+             if st.button("🔄 Restart Lib-Ate", use_container_width=True):
+                 st.session_state.lib_ate_state = "init"
+                 st.session_state.lib_ate_messages = []
+                 if hasattr(st.session_state, "lib_ate_image"):
+                    del st.session_state.lib_ate_image
+                 st.rerun()
     """Render the free-form chat mode (PlaidChat)."""
     quip = QUIP_PERSONAS[st.session_state.current_quip]
     
@@ -1666,18 +1824,7 @@ def main():
     if current_mode == "plaid_chat":
         render_chat_mode()
     elif current_mode == "lib_ate":
-        if current_stage == "welcome":
-            render_welcome()
-        elif current_stage == "style":
-            render_style_selection()
-        elif current_stage == "genre":
-            render_genre_selection()
-        elif current_stage == "absurdity":
-            render_absurdity_selection()
-        elif current_stage == "prompts":
-            render_prompt_collection()
-        elif current_stage == "story":
-            render_story_generation()
+        render_lib_ate()
     elif current_mode == "create_direct":
         render_create_direct()
     elif current_mode == "storyline":
