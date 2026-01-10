@@ -837,11 +837,22 @@ def render_lib_ate():
     
     # Initialize Lib-Ate specific state
     if "lib_ate_state" not in st.session_state:
-        st.session_state.lib_ate_state = "init"
+        st.session_state.lib_ate_state = "select_style"
         st.session_state.lib_ate_messages = []
+        st.session_state.lib_ate_selections = {}
         
-        # Add welcome message
-        welcome_msg = f"🎭 **Welcome to Lib-Ate!**\n\nI'm {quip['name']}, and I've got a secret story hiding in my digital brain. I'll give you a teaser, and you give me words to fill in the blanks. When we're done, we'll reveal the masterpiece!\n\nReady to start? Type 'Yes' or tell me what kind of story you'd like!"
+        # Add welcome message and Style options
+        style_list = "\n".join([f"{i+1}. {s['name']} - {s['description']}" for i, (k, s) in enumerate(LITERARY_FORMS.items())])
+        welcome_msg = f"""**Welcome to Lib-Ate™!** 🎭
+        
+I'm {quip['name']}, and I need your help to weave a secret tale.
+        
+First, **choose your literary style**:
+        
+{style_list}
+{len(LITERARY_FORMS) + 1}. Wild Card
+        
+👉 You can type a number, 'wild', or part of a style name."""
         st.session_state.lib_ate_messages.append({"role": "assistant", "content": welcome_msg})
 
     st.markdown(f"""
@@ -854,7 +865,7 @@ def render_lib_ate():
         st.markdown(f'<div class="{role_class}">{msg["content"]}</div>', unsafe_allow_html=True)
     
     # Handle user input
-    user_input = st.chat_input("Type your message...", key="lib_ate_chat")
+    user_input = st.chat_input("Your choice...", key="lib_ate_chat")
     
     if user_input:
         # Add user message to state
@@ -862,110 +873,240 @@ def render_lib_ate():
         
         # Process input based on state
         state = st.session_state.lib_ate_state
-        
         assistant = get_assistant()
         
-        if state == "init":
-            # Generate the hidden story and teaser
-            with st.spinner("🤫 Cooking up a secret story..."):
-                prompt = f"""
-                Create a HIDDEN Mad Libs style story based on this user input: "{user_input}".
+        # Helper to find selection from list
+        def find_selection(user_val, options_dict, allow_wild=True):
+            user_val = user_val.lower().strip()
+            if allow_wild and ("wild" in user_val or "surprise" in user_val):
+                import random
+                return random.choice(list(options_dict.values()))
+            
+            # Check for number
+            if user_val.isdigit():
+                idx = int(user_val) - 1
+                if 0 <= idx < len(options_dict):
+                    return list(options_dict.values())[idx]
+            
+            # Check for name match
+            for val in options_dict.values():
+                if user_val in val['name'].lower():
+                    return val
+            return None
+
+        if state == "select_style":
+            selection = find_selection(user_input, LITERARY_FORMS)
+            if selection:
+                st.session_state.lib_ate_selections["style"] = selection['name']
+                st.session_state.lib_ate_state = "select_genre"
                 
-                1. Generate a short, funny story (approx 100-150 words).
-                2. Identify 5-7 keywords to be replaced (nouns, verbs, adjectives).
-                3. Create a TEASER line that hints at the story without giving it away.
+                # Prepare Genre Options
+                # Grouping for display
+                core_list = [f"{i+1}. {g['name']}" for i, (k, g) in enumerate(CORE_GENRES.items())]
+                flex_list = [f"{i+1+10}. {g['name']}" for i, (k, g) in enumerate(FLEXIBLE_GENRES.items())] # Offset indices purely for display differentiation if we wanted, but let's keep it simple
                 
-                Output ONLY valid JSON in this format:
-                {{
-                    "hidden_story_template": "The story with [PLACEHOLDERS] for the words.",
-                    "teaser": "The teaser text.",
-                    "required_inputs": ["Noun", "Adjective", "Verb", "Plural Noun", "Emotion"]
-                }}
-                """
-                response = assistant.send_message(prompt)
+                # Actually, let's just show a curated list or all of them. The mockups show categories.
+                # We'll Flatten for simple selection logic but display nicely
                 
-                try:
-                    # Clean up response to ensure valid JSON
-                    clean_response = response.replace("```json", "").replace("```", "").strip()
-                    data = json.loads(clean_response)
-                    
-                    st.session_state.lib_ate_data = data
-                    st.session_state.lib_ate_inputs = []
-                    st.session_state.lib_ate_current_input_idx = 0
-                    st.session_state.lib_ate_state = "collecting"
-                    
-                    # Assistant responds with Teaser and first prompt
-                    first_input_type = data["required_inputs"][0]
-                    response_msg = f"🤫 **Teaser:** {data['teaser']}\n\nI need a few things from you to reveal the truth.\n\nFirst, give me a **{first_input_type}**!"
-                    st.session_state.lib_ate_messages.append({"role": "assistant", "content": response_msg})
-                    
-                except Exception as e:
-                    st.session_state.lib_ate_messages.append({"role": "assistant", "content": f"Oops, I got my wires crossed. Let's try that again. (Error: {str(e)})"})
-        
+                # Prepare lists for display
+                core_list_str = "\n".join([f"{i+1}. {g['name']}" for i, (k,g) in enumerate(CORE_GENRES.items())])
+                
+                # Flexible genres start numbering after core genres
+                start_idx = len(CORE_GENRES) + 1
+                flex_list_str = "\n".join([f"{i+start_idx}. {g['name']}" for i, (k,g) in enumerate({**FLEXIBLE_GENRES, **PLAIDVERSE_GENRES}.items())])
+                
+                genre_msg = f"""✅ **Selected Style:** {selection['name']} - {selection['description']}
+
+Excellent choice! Now, **choose your genre**:
+
+**🎬 Core Genres**
+{core_list_str}
+
+**🌀 Flexible & PlaidVerse™**
+{flex_list_str}
+
+{len(ALL_GENRES) + 1}. Wild Card
+
+👉 Type the number or name."""
+                st.session_state.lib_ate_messages.append({"role": "assistant", "content": genre_msg})
+            else:
+                 st.session_state.lib_ate_messages.append({"role": "assistant", "content": "I didn't catch that. Please type a valid number or style name!"})
+
+        elif state == "select_genre":
+            selection = find_selection(user_input, ALL_GENRES)
+            if selection:
+                st.session_state.lib_ate_selections["genre"] = selection['name']
+                st.session_state.lib_ate_state = "select_absurdity"
+                
+                absurdity_msg = f"""✅ **Genre:** {selection['name']}
+
+Finally, set the **absurdity level**:
+
+1. Mild - Just a sprinkle of silly 🌿
+2. Moderate - Comfortably ridiculous 🌊
+3. Spicy - Playful chaos 🌶️
+4. Chaotic - Logic optional 🌪️
+5. Plaidemonium™ - Laws of physics need not apply 💥
+6. Wild Card - Let fate decide! 🃏
+
+Type your choice (1-6 or text)."""
+                st.session_state.lib_ate_messages.append({"role": "assistant", "content": absurdity_msg})
+            else:
+                st.session_state.lib_ate_messages.append({"role": "assistant", "content": "Please choose a valid genre from the list!"})
+
+        elif state == "select_absurdity":
+            selection = find_selection(user_input, ABSURDITY_LEVELS)
+            if selection:
+                st.session_state.lib_ate_selections["absurdity"] = selection['name']
+                st.session_state.lib_ate_state = "generating_template"
+                st.rerun() # Force rerun to start generation immediately
+            else:
+                st.session_state.lib_ate_messages.append({"role": "assistant", "content": "Please pick a valid absurdity level (1-6)."})
+
         elif state == "collecting":
-            # Store the current input
-            # We assume valid input for now
+            # Store the previous input
             current_idx = st.session_state.lib_ate_current_input_idx
             required = st.session_state.lib_ate_data["required_inputs"]
             
-            st.session_state.lib_ate_inputs.append(user_input)
+            # handle "surprise me" logic for input values
+            val = user_input
+            if "surprise" in val.lower() or "random" in val.lower():
+                val = "[Auto-filled by AI]" 
+                # Note: We'll let the AI generate it during final assembly or we could ask for it now.
+                # Simplest is to pass "Wild Card" as the value and let the final prompt handle it.
+                val = "Wild Card (Surprise Me)"
+            
+            st.session_state.lib_ate_inputs.append(val)
             
             # Check if we need more
             if current_idx + 1 < len(required):
                 st.session_state.lib_ate_current_input_idx += 1
-                next_type = required[st.session_state.lib_ate_current_input_idx]
-                response_msg = f"Got it! Now I need a **{next_type}**."
+                next_req = required[st.session_state.lib_ate_current_input_idx]
+                
+                # Format: "Prompt X of Y: TYPE"
+                # If the AI provided hidden examples/descriptions, we could use them.
+                # The data structure has "required_inputs" as a list of strings usually (e.g. "Adjective").
+                # If it's a dict or richer object, we'd parse it. Assuming strings for now.
+                
+                response_msg = f"**Prompt {st.session_state.lib_ate_current_input_idx + 1} of {len(required)}**\n\nGive me a: **{next_req}**"
                 st.session_state.lib_ate_messages.append({"role": "assistant", "content": response_msg})
             else:
                 # All collected
                 st.session_state.lib_ate_state = "review"
-                summary = ", ".join([f"{req}: {val}" for req, val in zip(required, st.session_state.lib_ate_inputs)])
-                response_msg = f"✨ All inputs collected!\n\nHere's what I have:\n{summary}\n\n**Ready to reveal the story?** (Say Yes!)"
-                st.session_state.lib_ate_messages.append({"role": "assistant", "content": response_msg})
+                
+                # Build Summary
+                selections = st.session_state.lib_ate_selections
+                inputs_summary = ", ".join([f"'{req}': '{val}'" for req, val in zip(required, st.session_state.lib_ate_inputs)])
+                
+                summary_msg = f"""**Here's your setup:**
+                
+📜 **Style:** {selections['style']}
+🎬 **Genre:** {selections['genre']}
+🤪 **Absurdity:** {selections['absurdity']}
+
+🔑 **Variables:**
+{{ {inputs_summary} }}
+
+Type **YES** to reveal the story, or **NO** to restart."""
+                st.session_state.lib_ate_messages.append({"role": "assistant", "content": summary_msg})
         
         elif state == "review":
             if "yes" in user_input.lower() or "reveal" in user_input.lower():
                 st.session_state.lib_ate_state = "reveal"
-                
-                with st.spinner("Revealing the truth..."):
-                    story_template = st.session_state.lib_ate_data.get('hidden_story_template', '')
-                    inputs = st.session_state.lib_ate_inputs
-                    input_map = ", ".join([f"{req}={val}" for req, val in zip(st.session_state.lib_ate_data.get("required_inputs", []), inputs)])
-                    
-                    prompt = f"""
-                    Here is the hidden story template: "{story_template}"
-                    
-                    Here are the user inputs to fill in: {input_map}
-                    
-                    Rewrite the story replacing the placeholders with the user inputs. 
-                    Ensure grammatical correctness (fix a/an, tense if needed).
-                    Output ONLY the final story text.
-                    """
-                    
-                    final_story = assistant.send_message(prompt)
-                    st.session_state.lib_ate_final_story = final_story
-                    
-                    response_msg = f"🎉 **HERE IT IS!**\n\n{final_story}"
-                    st.session_state.lib_ate_messages.append({"role": "assistant", "content": response_msg})
-                    
-                    # Generate Image if enabled
-                    if st.session_state.get("enable_image_generation", True):
-                         with st.spinner("🎨 Painting the scene..."):
-                             image_prompt = f"A whimsical illustration for this story: {final_story[:200]}. Style: colorful, storybook. No text."
-                             img_res = assistant.generate_image(image_prompt)
-                             if "url" in img_res:
-                                 st.session_state.lib_ate_image = img_res["url"]
+                st.rerun()
             else:
-                st.session_state.lib_ate_messages.append({"role": "assistant", "content": "Just say 'Yes' to reveal!"})
-                
+                # Restart logic
+                st.session_state.lib_ate_state = "select_style"
+                st.session_state.lib_ate_messages = []
+                st.rerun()
+
         elif state == "reveal":
-            # Mostly listening directly here, but we also have buttons below
-            pass
+             pass # Handled below
 
         st.rerun()
 
+    # Handle "generating_template" state (Automatic transition)
+    if st.session_state.lib_ate_state == "generating_template":
+        with st.spinner("🤫 Cooking up a secret story template..."):
+            assistant = get_assistant()
+            selections = st.session_state.lib_ate_selections
+            
+            prompt = f"""
+            Create a HIDDEN Mad Libs style story.
+            
+            Style: {selections['style']}
+            Genre: {selections['genre']}
+            Absurdity Level: {selections['absurdity']}
+            
+            1. Generate a story (approx 150 words).
+            2. Identify 7-10 keywords to be replaced (nouns, verbs, adjectives, specific items).
+            3. Create a TEASER line that hints at the story.
+            
+            Output ONLY valid JSON:
+            {{
+                "hidden_story_template": "Story with [PLACEHOLDERS]...",
+                "teaser": "Teaser text...",
+                "required_inputs": ["Adjective", "Plural Noun", "Verb (Past Tense)", "Place", "Emotion", "Animal", "Food"]
+            }}
+            """
+            try:
+                response = assistant.send_message(prompt)
+                clean_response = response.replace("```json", "").replace("```", "").strip()
+                data = json.loads(clean_response)
+                
+                st.session_state.lib_ate_data = data
+                st.session_state.lib_ate_inputs = []
+                st.session_state.lib_ate_current_input_idx = 0
+                st.session_state.lib_ate_state = "collecting"
+                
+                # Initial prompt msg
+                first_req = data["required_inputs"][0]
+                msg = f"""✅ **Absurdity set to:** {selections['absurdity']}
+                
+🤫 **Teaser:** *{data['teaser']}*
+                
+I need {len(data['required_inputs'])} inputs to reveal the truth.
+                
+**Prompt 1 of {len(data['required_inputs'])}**
+Give me a: **{first_req}**"""
+                st.session_state.lib_ate_messages.append({"role": "assistant", "content": msg})
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Generation failed: {e}")
+                st.session_state.lib_ate_state = "select_style" # Reset on error
+
+    # Handle "reveal" state (Automatic generation part)
+    if st.session_state.lib_ate_state == "reveal" and not st.session_state.get("lib_ate_story_revealed"):
+         with st.spinner("✨ Revealing the masterpiece..."):
+            assistant = get_assistant()
+            template = st.session_state.lib_ate_data['hidden_story_template']
+            inputs = st.session_state.lib_ate_inputs
+            input_map = ", ".join([f"{req}={val}" for req, val in zip(st.session_state.lib_ate_data["required_inputs"], inputs)])
+            
+            prompt = f"""
+            Fill in the hidden story:
+            Template: "{template}"
+            Inputs: {input_map}
+            
+            If any input is "Wild Card" or "Surprise Me", generate a fitting funny word for it.
+            Output ONLY the final story.
+            """
+            final_story = assistant.send_message(prompt)
+            st.session_state.lib_ate_final_story = final_story
+            st.session_state.lib_ate_story_revealed = True
+            
+            st.session_state.lib_ate_messages.append({"role": "assistant", "content": f"🎉 **HERE IT IS!**\n\n{final_story}"})
+            
+            # Generate Image
+            if st.session_state.get("enable_image_generation", True):
+                 img_res = assistant.generate_image(f"Illustration for: {final_story[:200]}")
+                 if "url" in img_res:
+                     st.session_state.lib_ate_image = img_res["url"]
+            st.rerun()
+
     # Post-Reveal Controls
-    if st.session_state.get("lib_ate_state") == "reveal":
+    if st.session_state.lib_ate_state == "reveal" and st.session_state.get("lib_ate_story_revealed"):
         st.markdown("---")
         st.markdown("### 🎬 Post-Story Options")
         
@@ -983,11 +1124,13 @@ def render_lib_ate():
              )
         with col2:
              if st.button("🔄 Restart Lib-Ate", use_container_width=True):
-                 st.session_state.lib_ate_state = "init"
+                 st.session_state.lib_ate_state = "select_style"
                  st.session_state.lib_ate_messages = []
+                 st.session_state.lib_ate_story_revealed = False
                  if hasattr(st.session_state, "lib_ate_image"):
                     del st.session_state.lib_ate_image
                  st.rerun()
+
 
 def render_chat_mode():
     """Render the free-form chat mode (PlaidChat)."""
