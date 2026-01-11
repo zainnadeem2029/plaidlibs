@@ -12,6 +12,7 @@ from assistant import PlaidLibsAssistant
 from config import (
     LITERARY_FORMS, ALL_GENRES, ABSURDITY_LEVELS, 
     QUIP_PERSONAS, WORKFLOW_MODES, PROMPT_TYPES,
+    CORE_GENRES, FLEXIBLE_GENRES, PLAIDVERSE_GENRES,
     get_system_prompt, get_stage_prompt
 )
 
@@ -840,19 +841,29 @@ def render_lib_ate():
         st.session_state.lib_ate_state = "select_style"
         st.session_state.lib_ate_messages = []
         st.session_state.lib_ate_selections = {}
+        st.session_state.lib_ate_style_options = None  # Will store randomly selected styles
         
-        # Add welcome message and Style options
-        style_list = "\n".join([f"{i+1}. {s['name']} - {s['description']}" for i, (k, s) in enumerate(LITERARY_FORMS.items())])
-        welcome_msg = f"""**Welcome to Lib-Ate™!** 🎭
+        # Add welcome message with 5 random literary options + Wild Card + Reshuffle
+        import random
+        # Get all styles except wild_card for random selection
+        available_styles = {k: v for k, v in LITERARY_FORMS.items() if k != "wild_card"}
+        # Randomly select 5 styles
+        selected_keys = random.sample(list(available_styles.keys()), min(5, len(available_styles)))
+        selected_styles = {k: available_styles[k] for k in selected_keys}
+        st.session_state.lib_ate_style_options = selected_styles
         
+        style_list = "\n".join([f"{i+1}. {s['name']} - {s['description']}" for i, (k, s) in enumerate(selected_styles.items())])
+        welcome_msg = f"""**Welcome to Lib-Ate™!** 📜
+
 I'm {quip['name']}, and I need your help to weave a secret tale.
-        
+
 First, **choose your literary style**:
-        
+
 {style_list}
-{len(LITERARY_FORMS) + 1}. Wild Card
-        
-👉 You can type a number, 'wild', or part of a style name."""
+{len(selected_styles) + 1}. Wild Card
+{len(selected_styles) + 2}. Reshuffle
+
+👉 You can type a number, 'wild', 'reshuffle', or part of a style name."""
         st.session_state.lib_ate_messages.append({"role": "assistant", "content": welcome_msg})
 
     st.markdown(f"""
@@ -895,7 +906,31 @@ First, **choose your literary style**:
             return None
 
         if state == "select_style":
-            selection = find_selection(user_input, LITERARY_FORMS)
+            user_val = user_input.lower().strip()
+            
+            # Check for reshuffle
+            if "reshuffle" in user_val or user_val == str(len(st.session_state.lib_ate_style_options) + 2):
+                # Regenerate 5 random styles
+                import random
+                available_styles = {k: v for k, v in LITERARY_FORMS.items() if k != "wild_card"}
+                selected_keys = random.sample(list(available_styles.keys()), min(5, len(available_styles)))
+                selected_styles = {k: available_styles[k] for k in selected_keys}
+                st.session_state.lib_ate_style_options = selected_styles
+                
+                style_list = "\n".join([f"{i+1}. {s['name']} - {s['description']}" for i, (k, s) in enumerate(selected_styles.items())])
+                reshuffle_msg = f"""🔄 **Reshuffled!** Here are 5 new literary styles:
+
+{style_list}
+{len(selected_styles) + 1}. Wild Card
+{len(selected_styles) + 2}. Reshuffle
+
+👉 You can type a number, 'wild', 'reshuffle', or part of a style name."""
+                st.session_state.lib_ate_messages.append({"role": "assistant", "content": reshuffle_msg})
+                return
+            
+            # Use the stored random style options for selection
+            style_options = st.session_state.lib_ate_style_options or LITERARY_FORMS
+            selection = find_selection(user_input, style_options)
             if selection:
                 st.session_state.lib_ate_selections["style"] = selection['name']
                 st.session_state.lib_ate_state = "select_genre"
