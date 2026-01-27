@@ -750,8 +750,17 @@ Generate a {st.session_state.selected_style} story in the {st.session_state.sele
 **Words to incorporate:**
 {chr(10).join(prompt_pairs)}
 
+"""
+    
+    # Add specific formatting instructions
+    if st.session_state.selected_style.lower() == "listicle":
+        generation_prompt += "\n**IMPORTANT FORMATTING:** You MUST format this as a numbered list (e.g., 1., 2., 3...) with 5-10 distinct items. Do not write a continuous narrative paragraph."
+    elif st.session_state.selected_style.lower() == "ballads":
+        generation_prompt += "\n**IMPORTANT FORMATTING:** You MUST write this as a poem with distinct stanzas (verses). Ensure it has a rhythm and rhyme scheme appropriate for a ballad."
+
+    generation_prompt += """
 Remember to:
-1. Use the {st.session_state.selected_style} literary form structure
+1. Use the {st.session_state.selected_style} literary form structure STRICTLY
 2. Make it clearly read as {st.session_state.selected_genre}
 3. Match the {st.session_state.selected_absurdity} absurdity level
 4. Naturally incorporate ALL the provided words
@@ -781,7 +790,7 @@ Remember to:
                 if st.session_state.get("enable_image_generation", True):
                     with st.spinner("🎨 Creating illustration..."):
                         # Create an image prompt based on the story
-                        image_prompt = f"A vivid, artistic illustration for a {st.session_state.selected_genre} {st.session_state.selected_style}. Style: colorful, {st.session_state.selected_absurdity.lower()} whimsy, storybook quality. Theme incorporates: {', '.join(st.session_state.collected_prompts[:3])}. No text or words in the image."
+                        image_prompt = f"A vivid, artistic illustration for a {st.session_state.selected_genre} {st.session_state.selected_style}. Style: colorful, {st.session_state.selected_absurdity.lower()} whimsy, storybook quality. Theme incorporates: {', '.join(st.session_state.collected_prompts)}. No text or words in the image."
                         image_result = assistant.generate_image(image_prompt, style="vivid")
                         if "url" in image_result:
                             st.session_state.story_image = image_result["url"]
@@ -1460,7 +1469,8 @@ Keep it around 300-400 words. End with "TO BE CONTINUED..."
                 episode_image = None
                 if st.session_state.get("enable_image_generation", True):
                     with st.spinner(f"🎨 Creating Episode {ep_num} illustration..."):
-                        image_prompt = f"A dramatic cinematic illustration for Episode {ep_num} of an epic story about: {st.session_state.storyline_premise[:150]}. Style: epic, detailed, storybook fantasy art, dramatic lighting. No text or words in the image."
+                        # Use the generated episode text (response) to drive the image prompt
+                        image_prompt = f"A dramatic cinematic illustration for Episode {ep_num}. Scene Description: {response[:300]}... Style: epic, detailed, storybook fantasy art, dramatic lighting. No text or words in the image."
                         image_result = assistant.generate_image(image_prompt, style="vivid")
                         if "url" in image_result:
                             episode_image = image_result["url"]
@@ -1601,10 +1611,14 @@ Analyze this story and create {num_panels} detailed image generation prompts for
 
 **Visual Style:** {style}
 
+Generate {num_panels} distinct image prompts.
+CRITICAL: Ensure each prompt describes a DISTINCTLY DIFFERENT moment in the story to avoid visual redundancy.
+Format as a numbered list.
+
 For each scene, provide:
-1. **Scene Title:** A short descriptive title
-2. **Image Prompt:** A detailed prompt suitable for DALL-E or Midjourney (include composition, lighting, mood, style details)
-3. **Caption:** A short caption/description for the scene
+1. Visual Description (detailed)
+2. Mood/Atmosphere
+3. Key Elements
 
 Format each as a clear, numbered panel. Make prompts vivid and specific!
 """

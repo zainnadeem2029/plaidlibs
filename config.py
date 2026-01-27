@@ -46,7 +46,7 @@ LITERARY_FORMS = {
     "listicle": {
         "name": "Listicle",
         "description": "Humorous or surreal top-N lists",
-        "prompt_count": 6,
+        "prompt_count": 8,
         "icon": "📝"
     },
     "wild_card": {
