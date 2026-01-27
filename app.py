@@ -1081,17 +1081,33 @@ Type **YES** to reveal the story, or **NO** to restart."""
             Style: {selections['style']}
             Genre: {selections['genre']}
             Absurdity Level: {selections['absurdity']}
+
+            Format Instructions:
+            """
             
-            1. Generate a story (approx 150 words).
-            2. Identify 7-10 keywords to be replaced (nouns, verbs, adjectives, specific items).
+            if selections['style'].lower() == "listicle":
+                prompt += """
+                - MUST be a numbered list (1., 2., 3...).
+                - MUST include distinct items, not a paragraph.
+                """
+            elif selections['style'].lower() == "ballads":
+                prompt += """
+                - MUST be written as a poem with stanzas.
+                - MUST follow a rhyme scheme.
+                """
+            
+            prompt += """
+            1. Generate a story (approx 150 words) adhering to the Style.
+            2. Identify 7-10 keywords to be replaced.
+               IMPORTANT: You MUST include "Animal", "Food", and "Action" as keywords if they fit the Genre.
             3. Create a TEASER line that hints at the story.
             
             Output ONLY valid JSON:
-            {{
+            {
                 "hidden_story_template": "Story with [PLACEHOLDERS]...",
                 "teaser": "Teaser text...",
-                "required_inputs": ["Adjective", "Plural Noun", "Verb (Past Tense)", "Place", "Emotion", "Animal", "Food"]
-            }}
+                "required_inputs": ["Adjective", "Plural Noun", "Verb (Past Tense)", "Place", "Emotion", "Animal", "Food", ...]
+            }
             """
             try:
                 response = assistant.send_message(prompt)
@@ -1144,7 +1160,9 @@ Give me a: **{first_req}**"""
             
             # Generate Image
             if st.session_state.get("enable_image_generation", True):
-                 img_res = assistant.generate_image(f"Illustration for: {final_story[:200]}")
+                 # Include variables in the image prompt
+                 image_context = ", ".join(inputs)
+                 img_res = assistant.generate_image(f"Illustration for: {final_story[:200]}. Key elements: {image_context}")
                  if "url" in img_res:
                      st.session_state.lib_ate_image = img_res["url"]
             st.rerun()
