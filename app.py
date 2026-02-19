@@ -380,6 +380,16 @@ def reset_workflow():
     st.session_state.story_generated = False
     st.session_state.messages = []
     
+    # Clear Lib-Ate specific state to prevent reshuffle/persistence bugs
+    lib_ate_keys = [
+        "lib_ate_state", "lib_ate_messages", "lib_ate_selections", 
+        "lib_ate_style_options", "lib_ate_inputs", "lib_ate_data", 
+        "lib_ate_story_revealed", "lib_ate_current_input_idx"
+    ]
+    for key in lib_ate_keys:
+        if key in st.session_state:
+            del st.session_state[key]
+    
     # Reset assistant thread
     if st.session_state.assistant:
         st.session_state.assistant.reset_conversation()
@@ -541,7 +551,7 @@ def render_style_selection():
     quip = QUIP_PERSONAS[st.session_state.current_quip]
     
     st.markdown(f"""
-    <div class="mode-badge">{quip['icon']} {quip['name']} • Step 1: Literary Style</div>
+    <div class="mode-badge">{quip['icon']} {quip['name']} - Step 1: Literary Style</div>
     """, unsafe_allow_html=True)
     
     st.markdown("""
@@ -571,7 +581,7 @@ def render_genre_selection():
     quip = QUIP_PERSONAS[st.session_state.current_quip]
     
     st.markdown(f"""
-    <div class="mode-badge">{quip['icon']} {quip['name']} • Step 2: Genre</div>
+    <div class="mode-badge">{quip['icon']} {quip['name']} - Step 2: Genre</div>
     """, unsafe_allow_html=True)
     
     st.markdown(f"""
@@ -625,7 +635,7 @@ def render_absurdity_selection():
     quip = QUIP_PERSONAS[st.session_state.current_quip]
     
     st.markdown(f"""
-    <div class="mode-badge">{quip['icon']} {quip['name']} • Step 3: Absurdity Level</div>
+    <div class="mode-badge">{quip['icon']} {quip['name']} - Step 3: Absurdity Level</div>
     """, unsafe_allow_html=True)
     
     st.markdown(f"""
@@ -662,7 +672,7 @@ def render_prompt_collection():
     total = st.session_state.total_prompts
     
     st.markdown(f"""
-    <div class="mode-badge">{quip['icon']} {quip['name']} • Step 4: Word Collection</div>
+    <div class="mode-badge">{quip['icon']} {quip['name']} - Step 4: Word Collection</div>
     """, unsafe_allow_html=True)
     
     st.markdown(f"""
@@ -733,7 +743,7 @@ def render_story_generation():
     quip = QUIP_PERSONAS[st.session_state.current_quip]
     
     st.markdown(f"""
-    <div class="mode-badge">{quip['icon']} {quip['name']} • Step 5: Your Story</div>
+    <div class="mode-badge">{quip['icon']} {quip['name']} - Step 5: Your Story</div>
     """, unsafe_allow_html=True)
     
     # Prepare the story generation prompt
@@ -753,10 +763,30 @@ Generate a {st.session_state.selected_style} story in the {st.session_state.sele
 """
     
     # Add specific formatting instructions
-    if st.session_state.selected_style.lower() == "listicle":
-        generation_prompt += "\n**IMPORTANT FORMATTING:** You MUST format this as a numbered list (e.g., 1., 2., 3...) with 5-10 distinct items. Do not write a continuous narrative paragraph."
-    elif st.session_state.selected_style.lower() == "ballads":
-        generation_prompt += "\n**IMPORTANT FORMATTING:** You MUST write this as a poem with distinct stanzas (verses). Ensure it has a rhythm and rhyme scheme appropriate for a ballad."
+    style_lower = st.session_state.selected_style.lower()
+    if style_lower == "listicle":
+        generation_prompt += """
+**LISTICLE FORMATTING RULES:**
+1. Format AS A NUMBERED LIST (1., 2., 3...).
+2. Each item must be a STAND-ALONE, independent point. Do not make them a continuous narrative.
+3. Apply COMEDIC ESCALATION: Each point should be progressively more absurd or hilarious than the last.
+4. EMOJI PLACEMENT: Place emojis ONLY at the end of sentences/points. Never place them inside or immediately following a verb in a way that breaks sentence flow.
+"""
+    elif style_lower == "ballads":
+        generation_prompt += f"""
+**BALLAD REQUIREMENTS:**
+1. Format as a poem with distinct stanzas (verses).
+2. TONE: Since you are in {quip['name']} persona, maintain a consistently sarcastic, ironic, or mocking tone throughout.
+3. CHARACTER INTEGRATION: Ensure the characters (especially the 'Animal' if specified) are active, central participants in the drama.
+4. WEAPON INTEGRATION: If a weapon (e.g., 'Knife') is present, build narrative tension around its appearance and use.
+"""
+    elif style_lower == "vignettes":
+         generation_prompt += """
+**VIGNETTE REFINEMENTS:**
+1. SEMANTIC GROUNDING: If the 'Place' variable is an adjective (e.g., 'Mysterious'), you MUST append an anchor noun (e.g., 'The Mysterious Valley' or 'The Mysterious Spire').
+2. VARIABLE ALIGNMENT: Use all variables in their natural grammatical form. For example, 'Awe' should be treated as an emotion or feeling, not forced into a verb like 'began to awe'.
+3. AVOID REPETITION: Do not use the same emotional descriptors or nouns repeatedly.
+"""
 
     generation_prompt += """
 Remember to:
@@ -876,7 +906,7 @@ First, **choose your literary style**:
         st.session_state.lib_ate_messages.append({"role": "assistant", "content": welcome_msg})
 
     st.markdown(f"""
-    <div class="mode-badge">{quip['icon']} {quip['name']} • Lib-Ate</div>
+    <div class="mode-badge">{quip['icon']} {quip['name']} - Lib-Ate</div>
     """, unsafe_allow_html=True)
 
     # Display chat history
@@ -1087,14 +1117,26 @@ Type **YES** to reveal the story, or **NO** to restart."""
             
             if selections['style'].lower() == "listicle":
                 prompt += """
-                - MUST be a numbered list (1., 2., 3...).
-                - MUST include distinct items, not a paragraph.
-                """
+**LISTICLE FORMATTING RULES:**
+1. MUST be a numbered list (1., 2., 3...).
+2. Each item must be a STAND-ALONE, independent point.
+3. Apply COMEDIC ESCALATION: Each point should be funnier than the last.
+4. EMOJI PLACEMENT: Place emojis ONLY at the end of points.
+"""
             elif selections['style'].lower() == "ballads":
                 prompt += """
-                - MUST be written as a poem with stanzas.
-                - MUST follow a rhyme scheme.
-                """
+**BALLAD REQUIREMENTS:**
+1. MUST be written as a poem with stanzas.
+2. TONE: Maintain a consistently sarcastic, ironic, or mocking tone.
+3. CHARACTER INTEGRATION: Ensure characters (especially the 'Animal') are active participants.
+4. WEAPON INTEGRATION: If a weapon is present, build narrative tension around it.
+"""
+            elif selections['style'].lower() == "vignettes":
+                prompt += """
+**VIGNETTE REFINEMENTS:**
+1. SEMANTIC GROUNDING: If 'Place' is an adjective, append an anchor noun (e.g., 'Mysterious Wilds').
+2. VARIABLE ALIGNMENT: Use all variables in their natural grammatical form.
+"""
             
             prompt += """
             1. Generate a story (approx 150 words) adhering to the Style.
@@ -1145,10 +1187,14 @@ Give me a: **{first_req}**"""
             input_map = ", ".join([f"{req}={val}" for req, val in zip(st.session_state.lib_ate_data["required_inputs"], inputs)])
             
             prompt = f"""
-            Fill in the hidden story:
+            Fill in the hidden story accurately and creatively.
             Template: "{template}"
             Inputs: {input_map}
             
+            IMPORTANT: Ensure the final story strictly follows the {selections['style']} literary form requirements.
+            If it's a Listicle: Keep points independent, escalate comedy, emojis at end.
+            If it's a Ballad: Maintain sarcastic tone, focus on character/weapon integration.
+            If it's a Vignette: Ensure semantic grounding for places and proper variable alignment.
             If any input is "Wild Card" or "Surprise Me", generate a fitting funny word for it.
             Output ONLY the final story.
             """
@@ -1199,7 +1245,7 @@ def render_chat_mode():
     quip = QUIP_PERSONAS[st.session_state.current_quip]
     
     st.markdown(f"""
-    <div class="mode-badge">{quip['icon']} {quip['name']} • PlaidChat</div>
+    <div class="mode-badge">{quip['icon']} {quip['name']} - PlaidChat</div>
     """, unsafe_allow_html=True)
     
     st.markdown(f"""
@@ -1252,7 +1298,7 @@ def render_create_direct():
         st.session_state.create_direct_length = "medium"
     
     st.markdown(f"""
-    <div class="mode-badge">{quip['icon']} {quip['name']} • ✍️ Create Direct</div>
+    <div class="mode-badge">{quip['icon']} {quip['name']} - ✍️ Create Direct</div>
     """, unsafe_allow_html=True)
     
     if st.session_state.create_direct_stage == "topic":
@@ -1397,7 +1443,7 @@ def render_storyline():
         st.session_state.storyline_current_ep = 0
     
     st.markdown(f"""
-    <div class="mode-badge">{quip['icon']} {quip['name']} • 📚 Storyline</div>
+    <div class="mode-badge">{quip['icon']} {quip['name']} - 📚 Storyline</div>
     """, unsafe_allow_html=True)
     
     if st.session_state.storyline_stage == "setup":
@@ -1573,7 +1619,7 @@ def render_plaidpic():
         st.session_state.plaidpic_story = ""
     
     st.markdown(f"""
-    <div class="mode-badge">{quip['icon']} {quip['name']} • 🎨 PlaidPic</div>
+    <div class="mode-badge">{quip['icon']} {quip['name']} - 🎨 PlaidPic</div>
     """, unsafe_allow_html=True)
     
     if st.session_state.plaidpic_stage == "input":
@@ -1714,7 +1760,7 @@ def render_plaidmaggen():
         st.session_state.maggen_stage = "input"
     
     st.markdown(f"""
-    <div class="mode-badge">{quip['icon']} {quip['name']} • 📰 PlaidMagGen</div>
+    <div class="mode-badge">{quip['icon']} {quip['name']} - 📰 PlaidMagGen</div>
     """, unsafe_allow_html=True)
     
     if st.session_state.maggen_stage == "input":
@@ -1845,7 +1891,7 @@ def render_plaidplay():
         st.session_state.plaidplay_history = []
     
     st.markdown(f"""
-    <div class="mode-badge">{quip['icon']} {quip['name']} • 🎮 PlaidPlay</div>
+    <div class="mode-badge">{quip['icon']} {quip['name']} - 🎮 PlaidPlay</div>
     """, unsafe_allow_html=True)
     
     if st.session_state.plaidplay_stage == "setup":
