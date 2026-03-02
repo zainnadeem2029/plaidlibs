@@ -1185,6 +1185,7 @@ Give me a: **{first_req}**"""
             template = st.session_state.lib_ate_data['hidden_story_template']
             inputs = st.session_state.lib_ate_inputs
             input_map = ", ".join([f"{req}={val}" for req, val in zip(st.session_state.lib_ate_data["required_inputs"], inputs)])
+            selections = st.session_state.lib_ate_selections
             
             prompt = f"""
             Fill in the hidden story accurately and creatively.
