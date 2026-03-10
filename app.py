@@ -421,6 +421,7 @@ def render_sidebar():
             "Workflow Mode",
             options=list(mode_options.keys()),
             format_func=lambda x: mode_options[x],
+            index=list(mode_options.keys()).index(st.session_state.current_mode) if st.session_state.current_mode in mode_options else 0,
             key="mode_selector",
             label_visibility="collapsed"
         )
@@ -428,6 +429,7 @@ def render_sidebar():
         if selected_mode != st.session_state.current_mode:
             st.session_state.current_mode = selected_mode
             reset_workflow()
+            st.rerun()
         
         st.markdown("---")
         
@@ -769,23 +771,30 @@ Generate a {st.session_state.selected_style} story in the {st.session_state.sele
 **LISTICLE FORMATTING RULES:**
 1. Format AS A NUMBERED LIST (1., 2., 3...).
 2. Each item must be a STAND-ALONE, independent point. Do not make them a continuous narrative.
-3. Apply COMEDIC ESCALATION: Each point should be progressively more absurd or hilarious than the last.
-4. EMOJI PLACEMENT: Place emojis ONLY at the end of sentences/points. Never place them inside or immediately following a verb in a way that breaks sentence flow.
+3. Apply COMEDIC ESCALATION: Each point should be progressively more absurd or hilarious than the last. Do not repeat the same punchlines or variables without a twist.
+4. EMOJI PLACEMENT: Place emojis ONLY at the very end of sentences/points. Never place them inside or immediately following a verb in a way that breaks sentence flow.
 """
     elif style_lower == "ballads":
         generation_prompt += f"""
 **BALLAD REQUIREMENTS:**
-1. Format as a poem with distinct stanzas (verses).
-2. TONE: Since you are in {quip['name']} persona, maintain a consistently sarcastic, ironic, or mocking tone throughout.
-3. CHARACTER INTEGRATION: Ensure the characters (especially the 'Animal' if specified) are active, central participants in the drama.
-4. WEAPON INTEGRATION: If a weapon (e.g., 'Knife') is present, build narrative tension around its appearance and use.
+1. Format as a poem with distinct stanzas (verses) and a consistent rhyme scheme.
+2. TONE: Since you are in {quip['name']} persona, maintain a consistently sarcastic, ironic, or mocking tone throughout the narration, not just by using the word 'sarcastic'.
+3. CHARACTER INTEGRATION: Ensure the characters (especially the 'Animal' if specified) are active, central participants in the drama with a clear role.
+4. WEAPON/PROP INTEGRATION: If a weapon or specific object is present, build narrative tension around its appearance and use organically.
 """
     elif style_lower == "vignettes":
          generation_prompt += """
 **VIGNETTE REFINEMENTS:**
-1. SEMANTIC GROUNDING: If the 'Place' variable is an adjective (e.g., 'Mysterious'), you MUST append an anchor noun (e.g., 'The Mysterious Valley' or 'The Mysterious Spire').
-2. VARIABLE ALIGNMENT: Use all variables in their natural grammatical form. For example, 'Awe' should be treated as an emotion or feeling, not forced into a verb like 'began to awe'.
-3. AVOID REPETITION: Do not use the same emotional descriptors or nouns repeatedly.
+1. SEMANTIC GROUNDING: If the 'Place' variable is an adjective (e.g., 'Mysterious'), you MUST append an anchor noun (e.g., 'The Mysterious Valley' or 'The Mysterious Spire') to ground the location. Same applies to 'Action' or 'Verb', do not force a noun to be a verb or vice-versa.
+2. VARIABLE ALIGNMENT: Use all variables in their natural grammatical form. For example, 'Awe' should be treated as an emotion or feeling, not forced into a verb like 'began to awe'. Make sure verb tenses make logical sense with their direct objects.
+3. AVOID REPETITION: Do not use the same emotional descriptors or nouns repeatedly. Vary your vocabulary for impact.
+"""
+    elif style_lower == "microfiction":
+         generation_prompt += """
+**MICROFICTION REFINEMENTS:**
+1. NARRATIVE COHERENCE: Ensure clear verb-object pairings. For instance, do not say "Lanterns whispered a warlord." Make actions logical within the absurd context.
+2. SETTING CONSISTENCY: Keep the setting visually consistent in the text. Do not jump erratically between disconnected biomes without reason. 
+3. STAKES: The ending twist or consequence must match the tone of the genre and make contextual sense.
 """
 
     generation_prompt += """
@@ -820,7 +829,9 @@ Remember to:
                 if st.session_state.get("enable_image_generation", True):
                     with st.spinner("🎨 Creating illustration..."):
                         # Create an image prompt based on the story
-                        image_prompt = f"A vivid, artistic illustration for a {st.session_state.selected_genre} {st.session_state.selected_style}. Style: colorful, {st.session_state.selected_absurdity.lower()} whimsy, storybook quality. Theme incorporates: {', '.join(st.session_state.collected_prompts)}. No text or words in the image."
+                        # Extract the first ~300 chars of the generated text to ground the image prompt in the narrative
+                        story_snippet = st.session_state.generated_story[:300].replace('\n', ' ')
+                        image_prompt = f"A vivid, artistic illustration for a {st.session_state.selected_genre} {st.session_state.selected_style}. Setting and Action Context: '{story_snippet}'. Style: colorful, {st.session_state.selected_absurdity.lower()} whimsy, cinematic lighting, storybook quality. Theme incorporates: {', '.join(st.session_state.collected_prompts)}. No text or words in the image."
                         image_result = assistant.generate_image(image_prompt, style="vivid")
                         if "url" in image_result:
                             st.session_state.story_image = image_result["url"]
@@ -1119,23 +1130,30 @@ Type **YES** to reveal the story, or **NO** to restart."""
                 prompt += """
 **LISTICLE FORMATTING RULES:**
 1. MUST be a numbered list (1., 2., 3...).
-2. Each item must be a STAND-ALONE, independent point.
-3. Apply COMEDIC ESCALATION: Each point should be funnier than the last.
-4. EMOJI PLACEMENT: Place emojis ONLY at the end of points.
+2. Each item must be a STAND-ALONE, independent point. Do not write a continuous paragraph.
+3. Apply COMEDIC ESCALATION: Each point should be funnier than the last. Do not repeat variables heavily without adding new context.
+4. EMOJI PLACEMENT: Place emojis ONLY at the very end of points. Never place them inside or immediately following a verb in a way that breaks sentence flow.
 """
             elif selections['style'].lower() == "ballads":
                 prompt += """
 **BALLAD REQUIREMENTS:**
-1. MUST be written as a poem with stanzas.
-2. TONE: Maintain a consistently sarcastic, ironic, or mocking tone.
-3. CHARACTER INTEGRATION: Ensure characters (especially the 'Animal') are active participants.
-4. WEAPON INTEGRATION: If a weapon is present, build narrative tension around it.
+1. MUST be written as a poem with distinct stanzas and a consistent rhyme scheme.
+2. TONE: Maintain a consistently sarcastic, ironic, or mocking tone vividly in the narrative voice.
+3. CHARACTER INTEGRATION: Ensure characters (especially the 'Animal') have clear action roles and significance, not just dropped in.
+4. WEAPON INTEGRATION: If a weapon is present, build narrative tension around it organically.
 """
             elif selections['style'].lower() == "vignettes":
                 prompt += """
 **VIGNETTE REFINEMENTS:**
 1. SEMANTIC GROUNDING: If 'Place' is an adjective, append an anchor noun (e.g., 'Mysterious Wilds').
-2. VARIABLE ALIGNMENT: Use all variables in their natural grammatical form.
+2. VARIABLE ALIGNMENT: Use all variables in their natural grammatical form. Do not force nouns to be verbs. Be careful with verb-object pairings.
+"""
+            elif selections['style'].lower() == "microfiction":
+                prompt += """
+**MICROFICTION REFINEMENTS:**
+1. NARRATIVE COHERENCE: Ensure logical verb-object pairings. Actions must structurally make sense within the absurd context.
+2. SETTING CONSISTENCY: Keep the setting visually consistent throughout.
+3. STAKES: Make the resolution or consequence meaningful to the story's initial setup.
 """
             
             prompt += """
@@ -1193,9 +1211,10 @@ Give me a: **{first_req}**"""
             Inputs: {input_map}
             
             IMPORTANT: Ensure the final story strictly follows the {selections['style']} literary form requirements.
-            If it's a Listicle: Keep points independent, escalate comedy, emojis at end.
-            If it's a Ballad: Maintain sarcastic tone, focus on character/weapon integration.
-            If it's a Vignette: Ensure semantic grounding for places and proper variable alignment.
+            If it's a Listicle: Keep points independent, escalate comedy brilliantly, emojis at end only. Do not make it a continuous narrative.
+            If it's a Ballad: Maintain a strong sarcastic tone natively in the poem, focus on character/weapon integration and strict rhyming.
+            If it's a Vignette: Ensure semantic grounding for places and proper variable grammar. Ensure verbs match logical objects.
+            If it's Microfiction: Ensure strong narrative coherence, clear verb logic, setting consistency, and meaningful stakes.
             If any input is "Wild Card" or "Surprise Me", generate a fitting funny word for it.
             Output ONLY the final story.
             """
@@ -1207,9 +1226,10 @@ Give me a: **{first_req}**"""
             
             # Generate Image
             if st.session_state.get("enable_image_generation", True):
-                 # Include variables in the image prompt
+                 # Include variables in the image prompt and a snippet of the story to fix Visual-Narrative Misalignment
+                 story_snippet = final_story[:300].replace('\n', ' ')
                  image_context = ", ".join(inputs)
-                 img_res = assistant.generate_image(f"Illustration for: {final_story[:200]}. Key elements: {image_context}")
+                 img_res = assistant.generate_image(f"Artistic illustration for {selections['genre']} genre story. Visual Context: '{story_snippet}'. Key elements to include: {image_context}. Style: vivid, cinematic. No text or words.")
                  if "url" in img_res:
                      st.session_state.lib_ate_image = img_res["url"]
             st.rerun()
